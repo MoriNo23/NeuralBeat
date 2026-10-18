@@ -1,0 +1,13 @@
+NeuralBeat
+Copyright 2023-2026 Ægean (https://github.com/Aegean-E/NeuralBeat)
+
+This repository is a modified fork of NeuralBeat, maintained by MoriNo23
+(https://github.com/MoriNo23/NeuralBeat). Modified files are declared in the
+git history (commits after the fork point) and in the README and About dialog.
+
+The .agents/ directory contains third-party agent skills bundled by the fork
+maintainer; they are included as-is and each one keeps its own license and
+attribution, found inside the respective skill directory.
+
+NeuralBeat and the modifications in this fork are distributed under the
+Apache License, Version 2.0 (see LICENSE).

@@ -13,6 +13,11 @@
   <img src="banner.png" width="1080" alt="NeuralBeat - Banner">
 </div>
 
+> **Note**: this repository is a fork of
+> [Aegean-E/NeuralBeat](https://github.com/Aegean-E/NeuralBeat), maintained by
+> [MoriNo23](https://github.com/MoriNo23/NeuralBeat). It is not the original
+> project; issues and pull requests here are handled by the fork maintainer.
+
 ---
 
 ## 🌟 Why NeuralBeat?
@@ -201,7 +206,7 @@ Isochronic tones represent the most recent advancement in brainwave entrainment 
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/Aegean-E/NeuralBeat.git
+git clone https://github.com/MoriNo23/NeuralBeat.git
 cd NeuralBeat
 ```
 

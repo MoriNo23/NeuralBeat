@@ -8,6 +8,8 @@
 
 </div>
 
+> ℹ️ **Fork:** este repositorio es un fork de [Aegean-E/NeuralBeat](https://github.com/Aegean-E/NeuralBeat) mantenido por [MoriNo23](https://github.com/MoriNo23/NeuralBeat). No es el proyecto original: los issues y pull requests de este repositorio los atiende el mantenedor del fork.
+
 ---
 
 ## 📋 Requisitos previos
@@ -28,7 +30,7 @@
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/Aegean-E/NeuralBeat.git
+git clone https://github.com/MoriNo23/NeuralBeat.git
 cd NeuralBeat
 
 # 2. Crear un entorno virtual (recomendado)

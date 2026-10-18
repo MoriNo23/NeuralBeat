@@ -1043,15 +1043,14 @@ def play_audio():
 
 def show_about():
     about_text = """
-This project is licensed under the Apache License Version 2.0, January 2004. I appreciate any donations made on Patreon.
+NeuralBeat 1.0.0 - maintained fork by MoriNo23
+https://github.com/MoriNo23/NeuralBeat
 
-Social Media Accounts:
-
+Based on the original NeuralBeat by Ægean (2023-2026):
+https://github.com/Aegean-E/NeuralBeat
 Twitter: twitter.com/@Aegean_E
-Youtube: youtube.com/@Aegean_E
-Patreon: patreon.com/Aegean_E
 
-Ægean - 2023-2026
+Licensed under the Apache License Version 2.0, January 2004.
     """
     messagebox.showinfo("About", about_text)
 
@@ -1449,7 +1448,7 @@ def main():
         # I'll let it run.
 
     root = tb.Window(themename=initial_theme)
-    root.title("NeuralBeat 1.0.0")
+    root.title("NeuralBeat 1.0.0 (fork MoriNo23)")
     
     # Set window icon
     try:
