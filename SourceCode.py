@@ -1183,7 +1183,7 @@ def build_preset_buttons():
             text=p["label"],
             command=lambda l=p["left_hz"], r=p["right_hz"], c="Binaural": apply_preset(l, r, c)
         )
-        btn.grid(row=i, column=0, padx=10, pady=10, sticky="ew")
+        btn.grid(row=i, column=0, padx=10, pady=3, sticky="ew")
 
     # Isochronic presets - use carrier_hz and pulse_hz
     for i, p in enumerate(allp["Isochronic"]):
@@ -1194,7 +1194,7 @@ def build_preset_buttons():
             text=p["label"],
             command=lambda c=carrier, pl=pulse: apply_preset(0, 0, "Isochronic", carrier_hz=c, pulse_hz=pl)
         )
-        btn.grid(row=i, column=0, padx=10, pady=10, sticky="ew")
+        btn.grid(row=i, column=0, padx=10, pady=3, sticky="ew")
 
 def save_current_as_preset():
     try:
@@ -1341,29 +1341,29 @@ def on_close():
 
 def create_frequency_control_frame(parent, title, column, waveform_options, default_freq="432", default_vol="50", default_waveform="Sine"):
     frame = ttk.LabelFrame(parent, text=title)
-    frame.grid(row=0, column=column, padx=10, pady=10, sticky="nsew")
+    frame.grid(row=0, column=column, padx=10, pady=8, sticky="nsew")
 
     freq_label = ttk.Label(frame, text="Frequency (Hz):")
-    freq_label.grid(row=0, column=0, padx=10, pady=10)
+    freq_label.grid(row=0, column=0, padx=10, pady=5)
     freq_entry = ttk.Entry(frame)
-    freq_entry.grid(row=0, column=1, padx=10, pady=10)
+    freq_entry.grid(row=0, column=1, padx=10, pady=5)
     freq_entry.insert(0, default_freq)
 
     vol_label = ttk.Label(frame, text="Volume (%):")
-    vol_label.grid(row=1, column=0, padx=10, pady=10)
+    vol_label.grid(row=1, column=0, padx=10, pady=5)
     vol_entry = ttk.Entry(frame)
-    vol_entry.grid(row=1, column=1, padx=10, pady=10)
+    vol_entry.grid(row=1, column=1, padx=10, pady=5)
     vol_entry.insert(0, default_vol)
 
     waveform_label = ttk.Label(frame, text="Waveform:")
-    waveform_label.grid(row=2, column=0, padx=10, pady=10)
+    waveform_label.grid(row=2, column=0, padx=10, pady=5)
     waveform_var = tk.StringVar()
     waveform_combobox = ttk.Combobox(
         frame,
         textvariable=waveform_var,
         values=waveform_options
     )
-    waveform_combobox.grid(row=2, column=1, padx=10, pady=10)
+    waveform_combobox.grid(row=2, column=1, padx=10, pady=5)
     waveform_combobox.set(default_waveform)
 
     return freq_entry, vol_entry, waveform_var, waveform_combobox, freq_label, vol_label, waveform_label, frame
@@ -1523,7 +1523,7 @@ def main():
 
     # Presets UI (built-in presets.py + user presets from config.json)
     presets_frame = ttk.LabelFrame(root, text="Presets")
-    presets_frame.grid(row=0, column=2, rowspan=3, padx=10, pady=10, sticky="nsew")
+    presets_frame.grid(row=0, column=2, rowspan=3, padx=10, pady=8, sticky="nsew")
     presets_frame.columnconfigure(0, weight=1)
     presets_frame.columnconfigure(1, weight=1)
     presets_frame.rowconfigure(0, weight=1)
@@ -1539,12 +1539,12 @@ def main():
     create_preset_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
 
     preset_name_label = ttk.Label(create_preset_frame, text="Name (Exact):")
-    preset_name_label.grid(row=0, column=0, padx=10, pady=6, sticky="e")
+    preset_name_label.grid(row=0, column=0, padx=10, pady=4, sticky="e")
     preset_name_entry = ttk.Entry(create_preset_frame, width=28)
-    preset_name_entry.grid(row=0, column=1, padx=10, pady=6, sticky="w")
+    preset_name_entry.grid(row=0, column=1, padx=10, pady=4, sticky="w")
 
     preset_category_label = ttk.Label(create_preset_frame, text="Type:")
-    preset_category_label.grid(row=1, column=0, padx=10, pady=6, sticky="e")
+    preset_category_label.grid(row=1, column=0, padx=10, pady=4, sticky="e")
     preset_category_var = tk.StringVar(value="Binaural Beat / Monaural Beat")
     preset_category_combo = ttk.Combobox(
         create_preset_frame,
@@ -1553,19 +1553,19 @@ def main():
         state="readonly",
         width=25
     )
-    preset_category_combo.grid(row=1, column=1, padx=10, pady=6, sticky="w")
+    preset_category_combo.grid(row=1, column=1, padx=10, pady=4, sticky="w")
 
     save_preset_button = ttk.Button(create_preset_frame, text="Save Current Frequencies as Preset", command=save_current_as_preset)
-    save_preset_button.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+    save_preset_button.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
 
     delete_preset_button = ttk.Button(create_preset_frame, text="Remove Preset", command=delete_preset)
-    delete_preset_button.grid(row=2, column=1, padx=10, pady=10, sticky="ew")
+    delete_preset_button.grid(row=2, column=1, padx=10, pady=5, sticky="ew")
 
     build_preset_buttons()
 
     # Ramp controls (under frequency frames)
     advanced_controls_frame = ttk.LabelFrame(root, text="Advanced Controls")
-    advanced_controls_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+    advanced_controls_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=8, sticky="nsew")
 
     # Configure grid to center content
     advanced_controls_frame.columnconfigure(0, weight=1)
@@ -1574,7 +1574,7 @@ def main():
 
     # --- Beat Type selector ---
     beat_type_container = ttk.Frame(advanced_controls_frame)
-    beat_type_container.grid(row=0, column=0, columnspan=3, pady=5)
+    beat_type_container.grid(row=0, column=0, columnspan=3, pady=4)
     
     beat_type_subsection = ttk.LabelFrame(beat_type_container, text="Beat Type")
     beat_type_subsection.pack()
@@ -1586,18 +1586,18 @@ def main():
 
     # --- Subsections within the main ramp frame ---
     noise_container = ttk.Frame(advanced_controls_frame)
-    noise_container.grid(row=1, column=0, columnspan=3, pady=5)
+    noise_container.grid(row=1, column=0, columnspan=3, pady=4)
     noise_subsection_frame = ttk.LabelFrame(noise_container, text="Background Noise")
     noise_subsection_frame.pack()
 
     ramp_container = ttk.Frame(advanced_controls_frame)
-    ramp_container.grid(row=2, column=0, columnspan=3, pady=5)
+    ramp_container.grid(row=2, column=0, columnspan=3, pady=4)
     ramp_subsection_frame = ttk.LabelFrame(ramp_container, text="Ramp Settings")
     ramp_subsection_frame.pack()
 
     # --- Populate Background Noise subsection ---
     noise_type_label = ttk.Label(noise_subsection_frame, text="Noise Type:")
-    noise_type_label.grid(row=0, column=0, padx=10, pady=6, sticky="e")
+    noise_type_label.grid(row=0, column=0, padx=10, pady=4, sticky="e")
 
     noise_type_var = tk.StringVar(value="None")
     noise_type_combo = ttk.Combobox(
@@ -1607,51 +1607,51 @@ def main():
         state="readonly",
         width=15
     )
-    noise_type_combo.grid(row=0, column=1, padx=10, pady=6, sticky="w")
+    noise_type_combo.grid(row=0, column=1, padx=10, pady=4, sticky="w")
 
     noise_volume_label = ttk.Label(noise_subsection_frame, text="Volume (%):")
-    noise_volume_label.grid(row=1, column=0, padx=10, pady=6, sticky="e")
+    noise_volume_label.grid(row=1, column=0, padx=10, pady=4, sticky="e")
     noise_volume_entry = ttk.Entry(noise_subsection_frame, width=10)
-    noise_volume_entry.grid(row=1, column=1, padx=10, pady=6, sticky="w")
+    noise_volume_entry.grid(row=1, column=1, padx=10, pady=4, sticky="w")
     noise_volume_entry.insert(0, "10")
 
     # --- Populate Ramp Settings subsection ---
     ramp_enabled_var = tk.BooleanVar(value=False)
     # Container for the switch to center it
     switch_container = ttk.Frame(ramp_subsection_frame)
-    switch_container.grid(row=0, column=0, columnspan=2, pady=10)
+    switch_container.grid(row=0, column=0, columnspan=2, pady=6)
     ramp_label = ttk.Label(switch_container, text="Enable Ramp")
     ramp_label.pack(side='left', padx=5)
-    ramp_switch = ttk.Checkbutton(switch_container, variable=ramp_enabled_var, bootstyle="success-round-toggle")
+    ramp_switch = tb.Checkbutton(switch_container, variable=ramp_enabled_var, bootstyle="success-round-toggle")
     ramp_switch.pack(side='left')
 
     carrier_label = ttk.Label(ramp_subsection_frame, text="Carrier (Hz):")
-    carrier_label.grid(row=1, column=0, padx=10, pady=6, sticky="e")
+    carrier_label.grid(row=1, column=0, padx=10, pady=4, sticky="e")
     carrier_entry = ttk.Entry(ramp_subsection_frame, width=10)
-    carrier_entry.grid(row=1, column=1, padx=10, pady=6, sticky="w")
+    carrier_entry.grid(row=1, column=1, padx=10, pady=4, sticky="w")
     carrier_entry.insert(0, "432")
 
     start_beat_label = ttk.Label(ramp_subsection_frame, text="Start beat (Hz):")
-    start_beat_label.grid(row=2, column=0, padx=10, pady=6, sticky="e")
+    start_beat_label.grid(row=2, column=0, padx=10, pady=4, sticky="e")
     start_beat_entry = ttk.Entry(ramp_subsection_frame, width=10)
-    start_beat_entry.grid(row=2, column=1, padx=10, pady=6, sticky="w")
+    start_beat_entry.grid(row=2, column=1, padx=10, pady=4, sticky="w")
     start_beat_entry.insert(0, "20")
 
     end_beat_label = ttk.Label(ramp_subsection_frame, text="End beat (Hz):")
-    end_beat_label.grid(row=3, column=0, padx=10, pady=6, sticky="e")
+    end_beat_label.grid(row=3, column=0, padx=10, pady=4, sticky="e")
     end_beat_entry = ttk.Entry(ramp_subsection_frame, width=10)
-    end_beat_entry.grid(row=3, column=1, padx=10, pady=6, sticky="w")
+    end_beat_entry.grid(row=3, column=1, padx=10, pady=4, sticky="w")
     end_beat_entry.insert(0, "3")
 
     ramp_minutes_label = ttk.Label(ramp_subsection_frame, text="Duration (min):")
-    ramp_minutes_label.grid(row=4, column=0, padx=10, pady=6, sticky="e")
+    ramp_minutes_label.grid(row=4, column=0, padx=10, pady=4, sticky="e")
     ramp_minutes_entry = ttk.Entry(ramp_subsection_frame, width=10)
-    ramp_minutes_entry.grid(row=4, column=1, padx=10, pady=6, sticky="w")
+    ramp_minutes_entry.grid(row=4, column=1, padx=10, pady=4, sticky="w")
     ramp_minutes_entry.insert(0, "30")
 
     # --- Bottom control bar ---
     bottom_frame = ttk.Frame(root)
-    bottom_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky="ew")
+    bottom_frame.grid(row=3, column=0, columnspan=3, pady=6, sticky="ew")
     bottom_frame.columnconfigure(0, weight=1)
     bottom_frame.columnconfigure(1, weight=1)
     bottom_frame.columnconfigure(2, weight=1)
