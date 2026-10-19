@@ -39,6 +39,13 @@
 
 - [ ] 7.1 En el hardware del autor (59.8 Hz): medir tasa lograda y jitter con audio sonando, comprobar salida con cualquier tecla, cierre al parar el audio, bloqueo de 40 Hz y que `python SourceCode.py --debug` sigue en verde (sin regresión del motor de audio). Registrar resultados en una nota de verificación dentro del change. ⏳ Pendiente de ejecución en el hardware del autor: ver `verification.md` (la parte automatizada ya está en verde: 133 tests, reporte DSP PASS, `verify_dsp_ramp.py` exit 0).
 
+## 8. Correcciones tras las pruebas del autor (2026-10-19)
+
+- [x] 8.1 El modo visual se cerraba ~1 ms después de abrirse: `start_visual_mode()` nunca llamaba a `scheduler.start()`, así `poll()` devolvía `None` y `visual_poll()` lo interpretaba como "el audio no avanza" (afectaba a todos los ritmos; 40 Hz solo *parecía* funcionar porque su diálogo de gate queda visible). ✔ `scheduler.start()` antes del primer poll + `TestVisualModeStart`; en pantalla real se mantuvo >1.8 s con isocrónico 16 Hz y cerró con `Escape`.
+- [x] 8.2 Botón "Modo visual" y su etiqueta de estado quedaban recortados y, al ensanchar el texto la ventana, la columna de presets isocrónicos se salía de pantalla. ✔ Botón, estado y aviso movidos a la barra inferior con `wraplength`; ventana 1308×714 con todos los controles visibles.
+- [x] 8.3 Si la calibración no es plausible, usar el refresco nominal de `xrandr --current` (`confidence: "sistema"`, valor no medido) en lugar del default de 60 Hz. ✔ `parse_xrandr_refresh_hz()` + `probe_system_refresh_hz()` con `TestSystemRefreshProbe`; la ejecución de "Recalibrar pantalla" en el panel real queda para 7.1.
+- [x] 8.4 Suite completa tras los cambios: 137 tests en verde.
+
 ## Workflow follow-up
 
 - Archivar el change cuando la revisión esté satisfecha (`openspec archive modo-visual-estroboscopico`).

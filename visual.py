@@ -380,6 +380,22 @@ def validate_refresh_measurement(refresh_hz: float, jitter_ms: float
     return True, "alta"
 
 
+def parse_xrandr_refresh_hz(text: str) -> Optional[float]:
+    """Refresco de la salida marcada como actual (`*`) en `xrandr --current`.
+
+    Valor nominal reportado por el servidor, no una medición.
+    """
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 2 or "x" not in parts[0] or "*" not in parts[1]:
+            continue
+        try:
+            return float(parts[1].rstrip("*+"))
+        except ValueError:
+            continue
+    return None
+
+
 # --------------------------------------------------------------------------
 # Configuración persistente (tasks.md 2.2)
 # --------------------------------------------------------------------------

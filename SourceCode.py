@@ -9,6 +9,7 @@ from tkinter import filedialog
 import logging
 import threading
 import os
+import subprocess
 from dataclasses import dataclass
 
 import numpy as np
@@ -827,6 +828,21 @@ def get_visual_refresh_hz() -> float:
     return visual.DEFAULT_REFRESH_HZ
 
 
+def probe_system_refresh_hz():
+    """Refresco nominal que reporta el sistema (xrandr). None si no se puede.
+
+    No es una medicion: solo evita el default de 60 Hz cuando la calibracion
+    real no es fiable (p. ej. compositor que ignora deadlines).
+    """
+    try:
+        out = subprocess.run(["xrandr", "--current"], capture_output=True,
+                             text=True, timeout=3.0).stdout
+    except Exception:
+        logger.info("Sin xrandr para el refresco del sistema", exc_info=True)
+        return None
+    return visual.parse_xrandr_refresh_hz(out)
+
+
 def get_visual_rate_request() -> dict:
     """Resuelve el ritmo visual pedido segun el estado de la UI.
 
@@ -1046,13 +1062,23 @@ def run_screen_calibration():
                       f"(jitter p95 {jitter:.2f} ms, confianza {confidence}).")
         else:
             # Medición no plausible (sesión remota, compositor sin límite de
-            # fotogramas...): default conservador e invitación a recalibrar.
-            v["refresh_hz"] = visual.DEFAULT_REFRESH_HZ
-            v["confidence"] = "baja"
-            detail = (f"Medición no fiable ({refresh:.0f} Hz, jitter "
-                      f"{jitter:.1f} ms). Se usa {visual.DEFAULT_REFRESH_HZ:.0f} Hz "
-                      f"por defecto y el gate queda conservador. Prueba "
-                      f"'Recalibrar pantalla' en un escritorio real.")
+            # fotogramas...): refresco nominal del sistema si existe; si no,
+            # default conservador e invitación a recalibrar.
+            sys_hz = probe_system_refresh_hz()
+            if sys_hz:
+                v["refresh_hz"] = sys_hz
+                v["confidence"] = "sistema"
+                detail = (f"Medición no fiable ({refresh:.0f} Hz, jitter "
+                          f"{jitter:.1f} ms). Se usa el refresco que reporta el "
+                          f"sistema: {sys_hz:.2f} Hz (no medido). Prueba "
+                          f"'Recalibrar pantalla' en un escritorio real.")
+            else:
+                v["refresh_hz"] = visual.DEFAULT_REFRESH_HZ
+                v["confidence"] = "baja"
+                detail = (f"Medición no fiable ({refresh:.0f} Hz, jitter "
+                          f"{jitter:.1f} ms). Se usa {visual.DEFAULT_REFRESH_HZ:.0f} Hz "
+                          f"por defecto y el gate queda conservador. Prueba "
+                          f"'Recalibrar pantalla' en un escritorio real.")
         v["jitter_ms"] = jitter
         v["calibrated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         config["visual"] = v
@@ -1163,6 +1189,9 @@ def start_visual_mode(cap, req):
         f"{visual.intensity_note(settings['intensity'])} - "
         f"no es un dispositivo médico ni un tratamiento")
     update_visual_button()
+    # start() ancla al pulso de audio y deja started=True: sin el, el primer
+    # poll() devuelve None y el modo se cierra al instante ("el audio no avanza").
+    scheduler.start()
     visual_poll()
 
 
@@ -2254,23 +2283,24 @@ def main():
     stop_button = ttk.Button(bottom_frame, text="Stop", command=stop_audio)
     stop_button.grid(row=0, column=2, sticky="w", padx=20)
 
-    # --- Visual strobe mode bar (openspec: estimulacion-visual) ---
-    visual_frame = ttk.LabelFrame(root, text="Modo visual (estroboscopio)")
-    visual_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=4, sticky="ew")
-    visual_frame.columnconfigure(1, weight=1)
-
+    # --- Modo visual (estroboscopio): fila propia en la barra inferior ---
+    # Sin LabelFrame (su título robaba la altura que necesita la fila) y con
+    # wraplength en la etiqueta: el texto largo de estado ensanchaba la ventana
+    # y empujaba la columna de presets fuera de la pantalla.
     visual_toggle_button = tb.Button(
-        visual_frame, text="Modo visual", command=toggle_visual_mode,
+        bottom_frame, text="Modo visual", command=toggle_visual_mode,
         bootstyle="secondary")
-    visual_toggle_button.grid(row=0, column=0, padx=10, pady=4, sticky="w")
+    visual_toggle_button.grid(row=1, column=0, sticky="e", padx=20, pady=(0, 4))
 
-    visual_status_label = ttk.Label(visual_frame, text="Visual: -", anchor="w")
-    visual_status_label.grid(row=0, column=1, padx=10, pady=4, sticky="ew")
+    visual_status_label = ttk.Label(
+        bottom_frame, text="Visual: -", anchor="center", justify="center",
+        wraplength=640)
+    visual_status_label.grid(row=1, column=1, sticky="ew", pady=(0, 4))
 
     visual_disclaimer_label = ttk.Label(
-        visual_frame, text="No es un dispositivo médico ni un tratamiento.",
+        bottom_frame, text="No es un dispositivo médico ni un tratamiento.",
         anchor="e")
-    visual_disclaimer_label.grid(row=0, column=2, padx=10, pady=4, sticky="e")
+    visual_disclaimer_label.grid(row=1, column=2, sticky="e", padx=20, pady=(0, 4))
 
     # El estado del gate se recalcula al cambiar ritmo, categoría o rampa
     beat_type_var.trace_add("write", lambda *a: update_visual_button())

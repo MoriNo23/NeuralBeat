@@ -703,5 +703,78 @@ class TestRateRequest(unittest.TestCase):
             SourceCode.get_visual_rate_request()
 
 
+# ---------------------------------------------------------------------------
+# 11. Arranque del modo visual en la app y refresco del sistema
+# ---------------------------------------------------------------------------
+
+class TestSystemRefreshProbe(unittest.TestCase):
+    """Refresco nominal del sistema cuando la calibración no es fiable."""
+
+    XRANDR = (
+        "Screen 0: minimum 320 x 200, current 1366 x 768, maximum 8192 x 8192\n"
+        "eDP-1 connected primary 1366x768+0+0 (normal left inverted right x axis y axis) 344mm x 194mm\n"
+        "   1366x768      59.80*+\n"
+        "   1024x768      59.92  \n"
+    )
+
+    def test_lee_el_modo_marcado_como_actual(self):
+        self.assertAlmostEqual(visual.parse_xrandr_refresh_hz(self.XRANDR), 59.80)
+
+    def test_sin_modo_actual_devuelve_none(self):
+        self.assertIsNone(visual.parse_xrandr_refresh_hz("Screen 0: minimum 320 x 200\n"))
+        self.assertIsNone(visual.parse_xrandr_refresh_hz(""))
+
+
+class TestVisualModeStart(unittest.TestCase):
+    """Regresión: start_visual_mode debe arrancar el scheduler.
+
+    Sin scheduler.start(), poll() devuelve None y visual_poll() cerraba el modo
+    al instante ("el audio no avanza"), así que el estrobo no llegaba a verse.
+    """
+
+    def setUp(self):
+        self._config = SourceCode.config
+        # `root` solo existe tras main(); en test se inyecta el mock de Tk.
+        self._had_root = hasattr(SourceCode, "root")
+        self._root = getattr(SourceCode, "root", None)
+        SourceCode.root = MagicMock()
+        SourceCode.config = {
+            "visual": {"photosensitive_consent": True, "refresh_hz": 60.0,
+                       "intensity": "comoda", "harmonics_enabled": False}}
+        self.gen = MagicMock()
+        self.gen.samples_generated = 0
+        self.gen.is_finished = False
+        cfg = MagicMock()
+        cfg.sample_rate = 44100
+        SourceCode.audio_engine.generator = self.gen
+        SourceCode.audio_engine.current_config = cfg
+        SourceCode.audio_engine.is_playing = True
+        self.req = {"mode": "manual", "beat_type": "isochronic",
+                    "rate_hz": 16.0, "ramp_s": None}
+        self.cap = visual.visual_capability(16.0, 60.0, False)
+
+    def tearDown(self):
+        if SourceCode.visual_mode_active:
+            SourceCode.close_visual_mode()
+        SourceCode.audio_engine.generator = None
+        SourceCode.audio_engine.current_config = None
+        SourceCode.audio_engine.is_playing = False
+        SourceCode.config = self._config
+        if self._had_root:
+            SourceCode.root = self._root
+        else:
+            del SourceCode.root
+
+    def test_scheduler_arrancado_y_modo_activo(self):
+        SourceCode.start_visual_mode(self.cap, self.req)
+        self.assertTrue(SourceCode.visual_scheduler.started)
+        self.assertTrue(SourceCode.visual_mode_active)
+
+    def test_modo_sigue_activo_tras_el_segundo_poll(self):
+        SourceCode.start_visual_mode(self.cap, self.req)
+        SourceCode.visual_poll()
+        self.assertTrue(SourceCode.visual_mode_active)
+
+
 if __name__ == '__main__':
     unittest.main()

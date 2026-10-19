@@ -55,6 +55,23 @@ interrumpía). Causas latentes corregidas:
   tests parchean (mismo patrón que `beat_type_var`); sin esto, `patch()`
   fallaba con AttributeError antes de que `main()` existiera.
 
+## Correcciones tras las pruebas en el escritorio real (2026-10-19)
+
+Sesión sobre el panel 1366×768 @ 59.8 Hz (KDE Wayland / XWayland), app lanzada
+desde el fork, con isocrónico 16 Hz y volúmenes a 0 para no emitir sonido:
+
+- `start_visual_mode()` ya arranca el scheduler: el modo abrió a pantalla
+  completa, sobrevivió más de 1.8 s (antes se cerraba en ~1 ms) y cerró con
+  `Escape`, sin traza en stderr. Capturas durante el modo: fotogramas
+  uniformes 201,201,201 = estado claro de la intensidad cómoda.
+- Layout: ventana 1308×714; botón "Modo visual — aproximado" (ámbar en 16 Hz),
+  etiqueta de estado ("Visual: Aproximado @ 16.00 Hz · jitter ±17 ms …") y
+  columna de presets isocrónicos completos, sin recortes.
+- Fallback de refresco (8.3): cubierto por unit tests (`parse_xrandr_refresh_hz`
+  con salidas reales de `xrandr --current`); la ejecución de
+  "Recalibrar pantalla" sobre este panel queda para 7.1.
+- `venv/bin/python run_tests.py` → **137 passed, 0 failed**.
+
 ## Pendiente en el hardware del autor (task 7.1)
 
 En este sandbox no es posible ejercitar la GUI (el `_tkagg` del matplotlib del
