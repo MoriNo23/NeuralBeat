@@ -24,6 +24,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import presets
 import verification
+import visual
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -36,6 +37,25 @@ osc_merge_var = None
 live_status_after_id = None
 play_mode = "manual"  # "manual" or "ramp"
 beat_type_var = None  # "binaural", "monaural", or "isochronic"
+
+# UI widget globals: se crean en main() y se declaran aqui a nivel de modulo
+# (mismo patron que beat_type_var/osc_merge_var) para que los tests puedan
+# parchearlos con unittest.mock.patch antes de que exista la ventana.
+left_frequency_entry = None
+right_frequency_entry = None
+left_volume_entry = None
+right_volume_entry = None
+left_waveform_var = None
+right_waveform_var = None
+noise_type_var = None
+noise_volume_entry = None
+ramp_enabled_var = None
+carrier_entry = None
+start_beat_entry = None
+end_beat_entry = None
+ramp_minutes_entry = None
+binaural_monaural_frame = None
+isochronic_beats_frame = None
 
 # Defaults
 ramp_carrier_hz = 432.0
@@ -721,6 +741,10 @@ def stop_audio():
     global live_status_after_id
     global play_mode
 
+    # El modo visual depende del audio en curso: se cierra antes de pararlo
+    if visual_mode_active:
+        close_visual_mode("audio detenido")
+
     # Stop UI update loop
     if live_status_after_id is not None:
         try:
@@ -735,6 +759,540 @@ def stop_audio():
         logger.error(f"Error stopping audio: {e}", exc_info=True)
 
     play_mode = "manual"
+
+
+# =============================================================================
+# Visual Strobe Mode (openspec: estimulacion-visual)
+# =============================================================================
+
+# Estado del modo visual (la ventana y el scheduler viven en el hilo Tk).
+visual_mode_active = False
+visual_window = None
+visual_scheduler = None
+visual_after_id = None
+visual_lateness_monitor = None
+visual_active_cap = None
+visual_active_gen = None
+visual_active_req = None
+visual_beat_clock = None
+visual_active_status = None
+visual_last_reason = None
+visual_status_last_refresh = 0.0
+visual_toggle_button = None
+visual_status_label = None
+visual_intensity_var = None
+visual_harmonics_var = None
+
+STATE_BOOTSTYLES = {
+    "exacto": "success",
+    "aproximado": "warning",
+    "armonico": "info",
+    "no_disponible": "danger",
+}
+
+PHOTOSENSITIVE_WARNING = (
+    "ADVERTENCIA DE SEGURIDAD FOTOSENSIBLE\n\n"
+    "El modo visual produce parpadeos de luz a pantalla completa.\n"
+    "Las luces intermitentes pueden provocar convulsiones en personas con "
+    "epilepsia fotosensible. El riesgo es máximo en la banda 15-25 Hz "
+    "(donde cae el preset de 16 Hz incluido en esta app).\n\n"
+    "No lo uses si tu o alguien de tu familia tiene epilepsia o sensibilidad "
+    "a luces parpadeantes; consulta antes a un médico.\n\n"
+    "Ante cualquier malestar, cierra el modo de inmediato: cualquier tecla o "
+    "clic lo interrumpe.\n\n"
+    "NeuralBeat y su modo visual NO son un dispositivo médico ni un "
+    "tratamiento.\n\n"
+    "¿Entiendes el riesgo y quieres habilitar el modo visual?"
+)
+
+
+def get_visual_settings() -> dict:
+    """Seccion visual de la config fusionada con defaults (compatible atras)."""
+    return visual.merge_visual_config(config)
+
+
+def save_visual_setting(key, value) -> None:
+    """Persiste una clave de la seccion visual en ~/.neuralbeat/config.json."""
+    v = config.get("visual") if isinstance(config.get("visual"), dict) else {}
+    v[key] = value
+    config["visual"] = v
+    save_config(config)
+
+
+def get_visual_refresh_hz() -> float:
+    """Refresco calibrado de la pantalla (default conservador si no hay)."""
+    v = get_visual_settings()
+    if v["refresh_hz"] and v["refresh_hz"] > 0:
+        return v["refresh_hz"]
+    return visual.DEFAULT_REFRESH_HZ
+
+
+def get_visual_rate_request() -> dict:
+    """Resuelve el ritmo visual pedido segun el estado de la UI.
+
+    Devuelve mode ("manual"/"ramp"), beat_type y rate_hz: binaural usa
+    |derecha-izquierda|, isocronico usa la tasa de pulso, y la rampa usa el
+    PEOR punto del barrido (gate). Lanza ValueError si algo no es numerico.
+    """
+    bt = beat_type_var.get() if beat_type_var else "binaural"
+    if ramp_enabled_var.get():
+        try:
+            start = float(start_beat_entry.get())
+            end = float(end_beat_entry.get())
+            minutes = float(ramp_minutes_entry.get())
+        except (ValueError, TypeError):
+            raise ValueError("Ramp settings must be numeric.")
+        worst = max(abs(start), abs(end))
+        return {
+            "mode": "ramp",
+            "beat_type": bt,
+            "rate_hz": worst,
+            "start_hz": start,
+            "end_hz": end,
+            "ramp_s": max(0.0, minutes * 60.0),
+        }
+    try:
+        left = float(left_frequency_entry.get())
+        right = float(right_frequency_entry.get())
+    except (ValueError, TypeError):
+        raise ValueError("Frequencies must be numeric.")
+    if bt == "isochronic":
+        rate = abs(left)
+    else:
+        rate = abs(right - left)
+    return {
+        "mode": "manual",
+        "beat_type": bt,
+        "rate_hz": rate,
+        "start_hz": None,
+        "end_hz": None,
+        "ramp_s": None,
+    }
+
+
+def get_visual_audio_time() -> float:
+    """Tiempo de audio del stream activo (reloj maestro: samples_generated)."""
+    g = audio_engine.generator
+    c = audio_engine.current_config
+    if g is None or c is None:
+        return 0.0
+    return g.samples_generated / c.sample_rate
+
+
+def compute_visual_capability():
+    """(request, VisualCapability) segun la UI y la calibracion actual."""
+    req = get_visual_rate_request()
+    refresh = get_visual_refresh_hz()
+    harmonics = get_visual_settings()["harmonics_enabled"]
+    if req["mode"] == "ramp":
+        cap = visual.ramp_gate_capability(
+            req["start_hz"], req["end_hz"], refresh, harmonics)
+    else:
+        cap = visual.visual_capability(req["rate_hz"], refresh, harmonics)
+    return req, cap
+
+
+def update_visual_button():
+    """Estado visible del boton Modo visual: exacto / aproximado / armonico /
+    no disponible + razon y feedback de potencia (openspec: gate honesto)."""
+    global visual_last_reason
+    if visual_toggle_button is None or visual_status_label is None:
+        return
+    if visual_mode_active:
+        try:
+            visual_toggle_button.config(text="Cerrar modo visual", bootstyle="danger")
+        except Exception:
+            visual_toggle_button.config(text="Cerrar modo visual")
+        visual_status_label.config(
+            text=visual_active_status or
+            "Modo visual activo - cierra con cualquier tecla")
+        return
+    try:
+        req, cap = compute_visual_capability()
+    except (ValueError, TypeError):
+        try:
+            visual_toggle_button.config(text="Modo visual", bootstyle="secondary")
+        except Exception:
+            visual_toggle_button.config(text="Modo visual")
+        visual_status_label.config(text="Modo visual: introduce un ritmo válido")
+        return
+    label = visual.capability_label(cap, req["rate_hz"])
+    if req["mode"] == "ramp":
+        label += " - gate por peor punto del barrido"
+    note = visual.intensity_note(get_visual_settings()["intensity"])
+    if visual_last_reason:
+        note = f"{visual_last_reason} - {note}"
+        visual_last_reason = None
+    state_txt = cap.state.replace("_", " ")
+    try:
+        visual_toggle_button.config(
+            text=f"Modo visual - {state_txt}",
+            bootstyle=STATE_BOOTSTYLES.get(cap.state, "secondary"))
+    except Exception:
+        visual_toggle_button.config(text=f"Modo visual - {state_txt}")
+    visual_status_label.config(text=f"Visual: {label} - {note}")
+
+
+def toggle_visual_mode():
+    """Accion del boton Modo visual: gate + consentimiento + arranque.
+
+    Nunca se auto-arranca: solo desde esta accion explicita del usuario.
+    """
+    if visual_mode_active:
+        close_visual_mode()
+        return
+    if not audio_engine.is_playing:
+        # Spec: sin audio sonando no inicia y explica por que
+        messagebox.showinfo(
+            "Modo visual",
+            "El modo visual solo puede abrirse mientras suena audio.\n"
+            "Pulsa 'Generate Beat' primero.")
+        return
+    settings = get_visual_settings()
+    if not settings["photosensitive_consent"]:
+        if not messagebox.askyesno("Aviso de fotosensibilidad",
+                                   PHOTOSENSITIVE_WARNING):
+            return
+        save_visual_setting("photosensitive_consent", True)
+    if not settings["refresh_hz"]:
+        if messagebox.askyesno(
+                "Calibración de pantalla",
+                "No hay calibración de pantalla guardada. El modo visual mide el "
+                "refresco real de tu pantalla para decidir honestamente qué "
+                "ritmos puede emitir.\n\n¿Calibrar ahora? (~2 s a pantalla "
+                "completa)"):
+            run_screen_calibration()
+    try:
+        req, cap = compute_visual_capability()
+    except (ValueError, TypeError) as e:
+        messagebox.showerror("Modo visual", str(e))
+        return
+    if not cap.available:
+        refresh = get_visual_refresh_hz()
+        substitute = visual.best_substitute(refresh)
+        harmonics_on = get_visual_settings()["harmonics_enabled"]
+        harmonic = (visual.harmonic_candidate(req["rate_hz"], refresh)
+                    if harmonics_on else None)
+        msg = (
+            f"El ritmo pedido ({req['rate_hz']:.2f} Hz) no se puede emitir en "
+            f"esta pantalla.\n\nRazón: {cap.reason}\n\n"
+            f"Alternativa: usar el ritmo exacto más alto que soporta tu "
+            f"pantalla, {substitute.effective_hz:.2f} Hz - una frecuencia "
+            f"DISTINTA a la pedida.")
+        if harmonic is not None:
+            msg += (f"\n\nExperimental: armónico ~{harmonic.harmonic_of_hz:.2f} Hz "
+                    f"(pulsos a {harmonic.effective_hz:.2f} Hz, potencia menor).")
+            reply = messagebox.askyesnocancel(
+                "Modo visual no disponible",
+                msg + "\n\n[Sí] sustituto - [No] armónico - [Cancelar] no iniciar")
+            if reply is None:
+                return
+            cap = substitute if reply else harmonic
+        else:
+            if not messagebox.askyesno("Modo visual no disponible", msg):
+                return
+            cap = substitute
+    start_visual_mode(cap, req)
+
+
+def run_screen_calibration():
+    """Mide el refresco real de la pantalla (~2 s a pantalla completa).
+
+    Alterna fotogramas cronometrando cada presentacion con perf_counter;
+    persiste refresh (mediana) y jitter (p95) en ~/.neuralbeat/config.json.
+    """
+    stamps = []
+    cal_win = None
+    try:
+        cal_win = tk.Toplevel(root)
+        cal_win.attributes("-fullscreen", True)
+        cal_win.configure(bg="#000000")
+        cal_canvas = tk.Canvas(cal_win, bg="#000000", highlightthickness=0)
+        cal_canvas.pack(fill=tk.BOTH, expand=True)
+        cal_rect = cal_canvas.create_rectangle(
+            0, 0, cal_win.winfo_screenwidth(),
+            cal_win.winfo_screenheight(),
+            fill="#000000", outline="")
+        cal_win.focus_force()
+        try:
+            cal_win.update_idletasks()
+            cal_win.update()
+        except Exception:
+            pass
+        colors = ("#FFFFFF", "#000000")
+        t_end = time.perf_counter() + 2.0
+        i = 0
+        while time.perf_counter() < t_end:
+            cal_canvas.itemconfig(cal_rect, fill=colors[i % 2])
+            cal_win.update()
+            stamps.append(time.perf_counter())
+            i += 1
+    except Exception:
+        logger.error("Screen calibration failed", exc_info=True)
+    finally:
+        if cal_win is not None:
+            try:
+                cal_win.destroy()
+            except Exception:
+                pass
+    try:
+        refresh, jitter = visual.compute_refresh_stats(stamps)
+        ok, confidence = visual.validate_refresh_measurement(refresh, jitter)
+        v = config.get("visual") if isinstance(config.get("visual"), dict) else {}
+        if ok:
+            v["refresh_hz"] = refresh
+            v["confidence"] = confidence
+            detail = (f"Refresco medido: {refresh:.1f} Hz "
+                      f"(jitter p95 {jitter:.2f} ms, confianza {confidence}).")
+        else:
+            # Medición no plausible (sesión remota, compositor sin límite de
+            # fotogramas...): default conservador e invitación a recalibrar.
+            v["refresh_hz"] = visual.DEFAULT_REFRESH_HZ
+            v["confidence"] = "baja"
+            detail = (f"Medición no fiable ({refresh:.0f} Hz, jitter "
+                      f"{jitter:.1f} ms). Se usa {visual.DEFAULT_REFRESH_HZ:.0f} Hz "
+                      f"por defecto y el gate queda conservador. Prueba "
+                      f"'Recalibrar pantalla' en un escritorio real.")
+        v["jitter_ms"] = jitter
+        v["calibrated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        config["visual"] = v
+        save_config(config)
+        messagebox.showinfo("Calibración de pantalla", detail)
+        logger.info("Screen calibration: %s", detail)
+    except (ValueError, ZeroDivisionError) as e:
+        messagebox.showerror("Calibración de pantalla",
+                             f"No se pudo medir el refresco: {e}")
+    update_visual_button()
+
+
+def start_visual_mode(cap, req):
+    """Abre el estroboscopio a pantalla completa anclado al audio que suena."""
+    global visual_mode_active, visual_window, visual_scheduler
+    global visual_lateness_monitor, visual_active_cap, visual_active_gen
+    global visual_active_req, visual_beat_clock, visual_active_status
+
+    settings = get_visual_settings()
+    off_color, on_color = visual.INTENSITY_PAIRS.get(
+        settings["intensity"], visual.INTENSITY_PAIRS["comoda"])
+    refresh = get_visual_refresh_hz()
+
+    gen = audio_engine.generator
+    cfg = audio_engine.current_config
+    if gen is None or cfg is None:
+        messagebox.showerror("Modo visual", "No hay audio activo.")
+        return
+
+    if req["mode"] == "ramp" and req["ramp_s"]:
+        beat_clock = visual.BeatClock(start_hz=max(0.1, req["start_hz"]),
+                                      end_hz=max(0.1, req["end_hz"]),
+                                      ramp_s=req["ramp_s"])
+    else:
+        beat_clock = visual.BeatClock(rate_hz=max(0.1, req["rate_hz"]))
+
+    strobe_win = tk.Toplevel(root)
+    strobe_win.attributes("-fullscreen", True)
+    strobe_win.configure(bg=off_color)
+    strobe_canvas = tk.Canvas(strobe_win, bg=off_color, highlightthickness=0)
+    strobe_canvas.pack(fill=tk.BOTH, expand=True)
+    strobe_rect = strobe_canvas.create_rectangle(
+        0, 0, 4000, 4000, fill=off_color, outline="")
+
+    def _on_strobe_resize(event):
+        try:
+            strobe_canvas.coords(strobe_rect, 0, 0, event.width, event.height)
+        except Exception:
+            pass
+
+    strobe_canvas.bind("<Configure>", _on_strobe_resize)
+
+    def _on_flip(state):
+        try:
+            strobe_canvas.itemconfig(strobe_rect,
+                                     fill=on_color if state else off_color)
+        except Exception:
+            pass
+
+    def _rebuild(rate_hz):
+        # Rampas: el patron sigue el valor del barrido en curso
+        if req["mode"] != "ramp":
+            return None
+        try:
+            cap_now = visual.visual_capability(
+                rate_hz, refresh, get_visual_settings()["harmonics_enabled"])
+        except Exception:
+            return None
+        if not cap_now.available:
+            return None  # el gate ya valido el barrido; se mantiene el patron
+        return (cap_now.pattern, cap_now.cycles_per_window)
+
+    scheduler = visual.StrobeScheduler(
+        cap.pattern, refresh, _on_flip,
+        clock=time.perf_counter,
+        get_audio_time=get_visual_audio_time,
+        beat_clock=beat_clock,
+        cycles_per_window=cap.cycles_per_window,
+        free_running=(cap.state == "armonico"),
+        reanchor_interval_s=1.0,
+        rebuild_fn=_rebuild)
+
+    # Salida inmediata: cualquier tecla o clic cierra y restaura la ventana
+    for btn in (1, 2, 3):
+        strobe_win.bind(f"<Button-{btn}>", lambda e: close_visual_mode())
+    strobe_win.bind("<Key>", lambda e: close_visual_mode())
+    strobe_win.protocol("WM_DELETE_WINDOW", lambda: close_visual_mode())
+    try:
+        strobe_win.focus_force()
+    except Exception:
+        pass
+
+    visual_window = strobe_win
+    visual_scheduler = scheduler
+    visual_lateness_monitor = visual.LatenessMonitor(1.0 / refresh)
+    visual_active_cap = cap
+    visual_active_gen = gen
+    visual_active_req = req
+    visual_beat_clock = beat_clock
+    visual_mode_active = True
+
+    base_label = visual.capability_label(
+        cap, req["rate_hz"] if req["mode"] != "ramp" else None)
+    if cap.requested_hz is None and req["rate_hz"]:
+        base_label += " (sustituto: frecuencia distinta a la pedida)"
+    visual_active_status = (
+        f"Visual activo: {base_label} - cierra con cualquier tecla/clic - "
+        f"{visual.intensity_note(settings['intensity'])} - "
+        f"no es un dispositivo médico ni un tratamiento")
+    update_visual_button()
+    visual_poll()
+
+
+def visual_poll():
+    """Bucle Tk del modo visual: flips por deadline, vigilancia de audio y
+    abort automatico si la tasa lograda cae por debajo de la requerida."""
+    global visual_after_id, visual_active_status, visual_status_last_refresh
+    if not visual_mode_active:
+        visual_after_id = None
+        return
+    # El audio se detuvo, termino o cambio de sesion -> cierre inmediato
+    gen = visual_active_gen
+    if ((not audio_engine.is_playing) or (audio_engine.generator is not gen)
+            or gen.is_finished):
+        close_visual_mode("el audio se detuvo o terminó")
+        return
+    sched = visual_scheduler
+    if sched is None:
+        close_visual_mode()
+        return
+    now = time.perf_counter()
+    next_deadline = sched.poll()
+    if next_deadline is None:
+        close_visual_mode("el audio no avanza")
+        return
+    # Abort automatico: mediana de lateness por encima del 15% del fotograma
+    lateness = sched.last_flip_lateness
+    if lateness is not None and visual_lateness_monitor is not None:
+        visual_lateness_monitor.record(now, lateness)
+        sched.last_flip_lateness = None
+        if visual_lateness_monitor.should_abort():
+            close_visual_mode(
+                "cerrado: tasa lograda insuficiente (compositor sobrecargado)")
+            return
+    # Rampa: refrescar el ritmo en curso en la etiqueta (~2 Hz)
+    try:
+        if (visual_active_req is not None
+                and visual_active_req["mode"] == "ramp"
+                and visual_beat_clock is not None
+                and now - visual_status_last_refresh > 0.5):
+            visual_status_last_refresh = now
+            cur = visual_beat_clock.rate_at(get_visual_audio_time())
+            cap_now = visual.visual_capability(cur, get_visual_refresh_hz())
+            visual_active_status = (
+                f"Visual activo: rampa en {cur:.2f} Hz - "
+                f"{visual.capability_label(cap_now, cur)} - "
+                f"cierra con cualquier tecla/clic")
+            update_visual_button()
+    except Exception:
+        logger.debug("Visual status refresh failed", exc_info=True)
+    delay_ms = 100.0
+    try:
+        delay_ms = max(1.0, min(100.0,
+                                (next_deadline - time.perf_counter()) * 1000.0 - 1.0))
+    except Exception:
+        pass
+    visual_after_id = root.after(int(delay_ms), visual_poll)
+
+
+def close_visual_mode(reason=None):
+    """Cierra el modo visual y restaura la ventana principal (foco incluido)."""
+    global visual_mode_active, visual_window, visual_scheduler, visual_after_id
+    global visual_active_gen, visual_active_cap, visual_active_req
+    global visual_beat_clock, visual_active_status, visual_last_reason
+    if visual_after_id is not None:
+        try:
+            root.after_cancel(visual_after_id)
+        except Exception:
+            pass
+        visual_after_id = None
+    if visual_scheduler is not None:
+        visual_scheduler.stop()
+        visual_scheduler = None
+    if visual_window is not None:
+        win = visual_window
+        visual_window = None
+        try:
+            win.destroy()
+        except Exception:
+            pass
+    was_active = visual_mode_active
+    visual_mode_active = False
+    visual_active_gen = None
+    visual_active_cap = None
+    visual_active_req = None
+    visual_beat_clock = None
+    visual_active_status = None
+    if reason:
+        visual_last_reason = f"modo visual {reason}"
+        logger.info("Modo visual: %s", reason)
+    if was_active:
+        try:
+            root.deiconify()
+            root.focus_set()
+        except Exception:
+            pass
+    update_visual_button()
+
+
+def set_visual_intensity():
+    """Intensidad cómoda (default) o brillante (opt-in con advertencia)."""
+    intensity = visual_intensity_var.get() if visual_intensity_var else "comoda"
+    if intensity == "brillante":
+        messagebox.showwarning(
+            "Intensidad brillante",
+            "Has elegido intensidad brillante: el parpadeo usará el contraste "
+            "máximo (negro / blanco puro).\n\nEl mayor contraste implica mayor "
+            "respuesta visual esperada y una estimulación más intensa. Ante "
+            "malestar, cierra con cualquier tecla y vuelve a la intensidad "
+            "cómoda.")
+    save_visual_setting(
+        "intensity", intensity if intensity in visual.INTENSITY_PAIRS else "comoda")
+    update_visual_button()
+
+
+def on_visual_harmonics_toggle():
+    """Flag avanzado del modo armónico experimental (apagado por defecto)."""
+    enabled = bool(visual_harmonics_var.get()) if visual_harmonics_var else False
+    save_visual_setting("harmonics_enabled", enabled)
+    if enabled:
+        messagebox.showinfo(
+            "Modo armónico experimental",
+            "Habilitado el modo armónico EXPERIMENTAL.\n\nCuando el ritmo pedido "
+            "no esté disponible en tu pantalla, se podrá ofrecer un patrón a un "
+            "divisor entero del refresco cuyo 2º armónico aproxime el ritmo "
+            "pedido (p. ej. 40 Hz pedidos en una pantalla de ~60 Hz: pulsos de "
+            "~19.93 Hz con 2º armónico en ≈39.87 Hz).\n\nEntrega MENOS potencia "
+            "que la frecuencia pedida y añade una componente en la frecuencia "
+            "fundamental.")
+    update_visual_button()
 
 
 # =============================================================================
@@ -1035,6 +1593,9 @@ def play_audio():
 
         if live_status_after_id is None:
             update_live_status()
+
+        # El gate visual puede cambiar (modo rampa reescribe las entradas)
+        update_visual_button()
     except ValueError as e:
          messagebox.showerror("Input Error", str(e))
     except Exception as e:
@@ -1164,6 +1725,9 @@ def apply_preset(left_hz: float = 0, right_hz: float = 0, category: str = "Binau
         right_frequency_entry.insert(0, str(right_hz))
         if beat_type_var:
             beat_type_var.set("binaural")
+
+    # El estado del gate visual depende del ritmo activo
+    update_visual_button()
 
 def build_preset_buttons():
     allp = get_all_presets()
@@ -1331,6 +1895,8 @@ def update_live_status():
 
 def on_close():
     try:
+        if visual_mode_active:
+            close_visual_mode()
         stop_audio()
     finally:
         try:
@@ -1376,6 +1942,8 @@ def main():
     global preset_name_entry, preset_category_var
     global carrier_entry, start_beat_entry, end_beat_entry, ramp_minutes_entry, noise_type_var, noise_volume_entry
     global status_var, ramp_enabled_var, osc_merge_var, beat_type_var
+    global visual_toggle_button, visual_status_label, visual_intensity_var
+    global visual_harmonics_var
 
     import sys
     if "--debug" in sys.argv:
@@ -1493,6 +2061,28 @@ def main():
 
     osc_menu.add_separator()
     osc_menu.add_checkbutton(label="Merge Waves", variable=osc_merge_var, command=set_osc_merge_waves)
+
+    # --- Visual strobe mode (openspec: estimulacion-visual) ---
+    visual_settings_menu = tk.Menu(settings_menu, tearoff=False)
+    settings_menu.add_cascade(label="Visual", menu=visual_settings_menu)
+    visual_settings_menu.add_command(label="Recalibrar pantalla",
+                                      command=run_screen_calibration)
+    visual_settings_menu.add_separator()
+    visual_intensity_var = tk.StringVar(value=get_visual_settings()["intensity"])
+    visual_settings_menu.add_radiobutton(
+        label="Intensidad: Cómoda (por defecto)",
+        variable=visual_intensity_var, value="comoda",
+        command=set_visual_intensity)
+    visual_settings_menu.add_radiobutton(
+        label="Intensidad: Brillante",
+        variable=visual_intensity_var, value="brillante",
+        command=set_visual_intensity)
+    visual_settings_menu.add_separator()
+    visual_harmonics_var = tk.BooleanVar(
+        value=get_visual_settings()["harmonics_enabled"])
+    visual_settings_menu.add_checkbutton(
+        label="Modo armónico experimental (avanzado)",
+        variable=visual_harmonics_var, command=on_visual_harmonics_toggle)
 
     beat_type_var = tk.StringVar(value="binaural")
 
@@ -1663,6 +2253,33 @@ def main():
 
     stop_button = ttk.Button(bottom_frame, text="Stop", command=stop_audio)
     stop_button.grid(row=0, column=2, sticky="w", padx=20)
+
+    # --- Visual strobe mode bar (openspec: estimulacion-visual) ---
+    visual_frame = ttk.LabelFrame(root, text="Modo visual (estroboscopio)")
+    visual_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=4, sticky="ew")
+    visual_frame.columnconfigure(1, weight=1)
+
+    visual_toggle_button = ttk.Button(
+        visual_frame, text="Modo visual", command=toggle_visual_mode,
+        bootstyle="secondary")
+    visual_toggle_button.grid(row=0, column=0, padx=10, pady=4, sticky="w")
+
+    visual_status_label = ttk.Label(visual_frame, text="Visual: -", anchor="w")
+    visual_status_label.grid(row=0, column=1, padx=10, pady=4, sticky="ew")
+
+    visual_disclaimer_label = ttk.Label(
+        visual_frame, text="No es un dispositivo médico ni un tratamiento.",
+        anchor="e")
+    visual_disclaimer_label.grid(row=0, column=2, padx=10, pady=4, sticky="e")
+
+    # El estado del gate se recalcula al cambiar ritmo, categoría o rampa
+    beat_type_var.trace_add("write", lambda *a: update_visual_button())
+    ramp_enabled_var.trace_add("write", lambda *a: update_visual_button())
+    for visual_entry in (left_frequency_entry, right_frequency_entry,
+                         start_beat_entry, end_beat_entry,
+                         ramp_minutes_entry):
+        visual_entry.bind("<KeyRelease>", lambda e: update_visual_button())
+    update_visual_button()
 
     update_live_status()
 

@@ -20,6 +20,8 @@ MOCK_MODULES = {
     'tkinter': MagicMock(),
     'tkinter.ttk': MagicMock(),
     'ttkbootstrap': MagicMock(),
+    # Matplotlib y constantes de Tk los pre-instala tests/conftest.py, que
+    # garantiza un orden de import determinista para toda la suite.
 }
 for mod_name, mock_obj in MOCK_MODULES.items():
     if mod_name not in sys.modules:
@@ -135,7 +137,8 @@ class TestConfig(unittest.TestCase):
         self.mock_save_config.assert_not_called()
 
     @patch('SourceCode.CONFIG_PATH')
-    def test_save_config(self, mock_path):
+    @patch('SourceCode.APP_DIR')
+    def test_save_config(self, mock_app_dir, mock_path):
         """Test the actual save_config function."""
         # We need to un-patch the save_config we patched in setUp
         self.save_config_patcher.stop()
@@ -143,12 +146,12 @@ class TestConfig(unittest.TestCase):
         mock_file = mock_open()
         # Mock the path object behavior
         mock_path.write_text = mock_file
-        mock_path.parent.mkdir = MagicMock()
+        mock_app_dir.mkdir = MagicMock()
 
         test_config_data = {"theme": "darkly", "value": 1}
         SourceCode.save_config(test_config_data)
 
-        mock_path.parent.mkdir.assert_called_once_with(parents=True, exist_ok=True)
+        mock_app_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_file.assert_called_once_with(json.dumps(test_config_data, indent=2), encoding="utf-8")
 
         # Restore patch for other tests

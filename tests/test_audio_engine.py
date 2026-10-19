@@ -21,6 +21,8 @@ MOCK_MODULES = {
     'tkinter': MagicMock(),
     'tkinter.ttk': MagicMock(),
     'ttkbootstrap': MagicMock(),
+    # Matplotlib y constantes de Tk los pre-instala tests/conftest.py, que
+    # garantiza un orden de import determinista para toda la suite.
 }
 
 for mod_name, mock_obj in MOCK_MODULES.items():
@@ -33,7 +35,7 @@ import SourceCode
 class TestAudioEngine(unittest.TestCase):
     """Test the AudioEngine class."""
 
-    @patch('SourceCode.sd', MOCK_MODULES['sounddevice'])
+    @patch('SourceCode.sd')
     @patch('SourceCode.BinauralGenerator')
     def test_start_binaural(self, mock_binaural_gen, mock_sd):
         """Test starting the audio engine for binaural beats."""
@@ -51,7 +53,7 @@ class TestAudioEngine(unittest.TestCase):
         # Cleanup
         engine.stop()
 
-    @patch('SourceCode.sd', MOCK_MODULES['sounddevice'])
+    @patch('SourceCode.sd')
     @patch('SourceCode.IsochronicGenerator')
     def test_start_isochronic(self, mock_isochronic_gen, mock_sd):
         """Test starting the audio engine for isochronic tones."""
@@ -69,7 +71,7 @@ class TestAudioEngine(unittest.TestCase):
         # Cleanup
         engine.stop()
 
-    @patch('SourceCode.sd', MOCK_MODULES['sounddevice'])
+    @patch('SourceCode.sd')
     @patch('SourceCode.BinauralGenerator')
     def test_stop(self, mock_binaural_gen, mock_sd):
         """Test stopping the audio engine."""
@@ -83,16 +85,18 @@ class TestAudioEngine(unittest.TestCase):
         engine.start(cfg)
         self.assertTrue(engine.is_playing)
 
+        # stop() anula engine._stream al cerrar: se captura antes
+        stream = engine._stream
         engine.stop()
 
         mock_gen_instance.request_stop.assert_called_once()
-        engine._stream.stop.assert_called_once()
-        engine._stream.close.assert_called_once()
+        stream.stop.assert_called_once()
+        stream.close.assert_called_once()
         self.assertFalse(engine.is_playing)
         self.assertIsNone(engine.generator)
         self.assertIsNone(engine.last_block)
 
-    @patch('SourceCode.sd', MOCK_MODULES['sounddevice'])
+    @patch('SourceCode.sd')
     def test_stop_when_not_playing(self, mock_sd):
         """Test that stop() does nothing if not playing."""
         engine = SourceCode.AudioEngine()
@@ -102,7 +106,7 @@ class TestAudioEngine(unittest.TestCase):
 
         mock_sd.OutputStream.assert_not_called()
 
-    @patch('SourceCode.sd', MOCK_MODULES['sounddevice'])
+    @patch('SourceCode.sd')
     @patch('SourceCode.logger')
     def test_start_exception(self, mock_logger, mock_sd):
         """Test exception handling during start."""

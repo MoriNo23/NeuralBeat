@@ -139,6 +139,16 @@ Isochronic tones represent the most recent advancement in brainwave entrainment 
 - Merged/Split view toggle
 - Perfect for understanding what you're listening to
 
+### ⚡ Visual Strobe Mode
+- Fullscreen strobe synced to the audio beat (binaural, isochronic, or ramp)
+- **Honest capability gate**: your screen's refresh rate is measured at runtime,
+  and only rhythms the display can actually reproduce are offered
+- Visible states with power feedback: *exact* / *approximate* (expected jitter)
+  / *experimental harmonic* / *unavailable* (with reason)
+- One-click substitute at your screen's true maximum (labeled as a different
+  frequency than requested)
+- Immediate exit on any key or click; never auto-starts
+
 ### 💾 Full Preset Management
 - Built-in presets for all common brainwave frequencies
 - Create custom presets with your favorite settings
@@ -296,6 +306,56 @@ python SourceCode.py
 3. Toggle "Merge Waves" to overlay or split channels
 4. Close the window when done
 
+#### Using the Visual Strobe Mode
+
+The Visual Strobe Mode turns the audio engine into an audiovisual stimulus:
+a fullscreen window flashes in lockstep with the audio beat (binaural/monaural:
+|right - left|; isochronic: the pulse rate; ramps: the value currently being
+swept, with the gate evaluated at the *worst* point of the sweep).
+
+Basic flow:
+1. Start audio with **Generate Beat** (the mode never auto-starts)
+2. Click **Modo visual - ...** in the "Modo visual (estroboscopio)" bar
+3. The first time you will be asked to accept a photosensitive epilepsy
+   warning, and (optionally) to calibrate your screen (~2 s fullscreen)
+4. Any key or click closes the mode immediately; stopping or finishing the
+   audio closes it automatically
+
+The button always shows the gate state before you start:
+
+| State | Meaning |
+|---|---|
+| **exacto** | The rhythm maps to a whole number of frames (e.g. 29.9 Hz on a 59.8 Hz panel, 40 Hz on 120 Hz). Zero jitter. If the effective rate differs from the requested one it is re-labeled (e.g. 10 Hz -> 9.97 Hz) |
+| **aproximado** | Reproduced with a periodic frame pattern (window <= 1 s); the expected jitter (~one frame) is reported in milliseconds |
+| **armonico** | *Experimental, opt-in*: pulses at a whole divisor of the refresh rate whose 2nd harmonic approximates the requested rhythm (e.g. 40 Hz requested on ~60 Hz -> 19.93 Hz pulses, 2nd harmonic ~39.87 Hz). Lower power, and it adds a component at the fundamental frequency |
+| **no disponible** | The rhythm exceeds half your measured refresh rate. It is never emitted "raw": on a 60 Hz panel, forcing 40 Hz would alias to ~19.8 Hz (the wrong band, and inside the 15-25 Hz photosensitive-risk zone) |
+
+When a rhythm is unavailable, the mode offers the highest exact rate your
+screen supports (e.g. *use 29.9 Hz* on a 59.8 Hz panel), clearly labeled as a
+frequency **different from the one requested**. With the experimental harmonic
+flag enabled (Settings -> Visual -> Modo armónico experimental), the harmonic
+alternative is offered too.
+
+Settings -> Visual:
+- **Recalibrar pantalla**: re-measures the real refresh rate (median of timed
+  frame flips, p95 jitter) and re-evaluates the gate. Better hardware => better
+  capability with no code changes.
+- **Intensidad**: *cómoda* (default, moderate contrast, lower expected visual
+  response) or *brillante* (opt-in, maximum contrast, with a warning).
+
+**How to get real 40 Hz flicker**: a 60 Hz-class panel physically cannot
+produce it (fundamental limited to refresh/2). Use a monitor of 120 Hz or
+higher (recalibrate after connecting it: 40 Hz becomes *exacto* on its own),
+or dedicated external hardware (LED strobe glasses). Neither phone screens
+nor software tricks can create temporal resolution between frames.
+
+**Safety**: flashing lights can trigger seizures in people with photosensitive
+epilepsy; risk is highest in the 15-25 Hz band (note that the built-in 16 Hz
+presets fall inside it). Do not use the visual mode if you or a family member
+have epilepsy. NeuralBeat and its visual mode are **not a medical device and
+not a treatment**. Comfortable intensity is the default; close it instantly
+with any key if you feel any discomfort.
+
 ---
 
 ## 🔬 Scientific Verification
@@ -417,6 +477,7 @@ The information provided in this document about brainwave frequencies and their 
 - Brainwave entrainment may not work for everyone
 - Results vary from person to person
 - If you have any medical conditions, epilepsy, or are pregnant, please **consult your doctor** before using audio entrainment tools
+- **Visual Strobe Mode**: flashing lights can trigger seizures in people with photosensitive epilepsy (highest risk in the 15-25 Hz band, which includes the 16 Hz presets). Never use the visual mode if you or a family member have epilepsy
 - Do not use while driving or operating machinery
 - Use at your own risk
 
@@ -439,7 +500,7 @@ Many users report feeling effects within 5-10 minutes of listening. However, the
 
 NeuralBeat generates tones within standard audio frequencies (20-20,000 Hz for carrier tones, 0.1-100 Hz for beat frequencies). The volume is controlled by you and default settings are conservative.
 
-**Important**: Do not use at excessively high volumes. If you experience any discomfort, stop using immediately. Consult your doctor if you have concerns.
+**Important**: Do not use at excessively high volumes. If you experience any discomfort, stop using immediately. Consult your doctor if you have concerns. The fullscreen Visual Strobe Mode carries an additional photosensitive-epilepsy warning and requires explicit acceptance before first use.
 
 ### Can I use it while sleeping?
 

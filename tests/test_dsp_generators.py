@@ -23,7 +23,8 @@ MOCK_MODULES = {
     'matplotlib.backends.backend_tkagg': MagicMock(),
 }
 for mod_name, mock_obj in MOCK_MODULES.items():
-    sys.modules[mod_name] = mock_obj
+    if mod_name not in sys.modules:
+        sys.modules[mod_name] = mock_obj
 
 import SourceCode
 
@@ -93,12 +94,19 @@ class TestBinauralGenerator(unittest.TestCase):
 
         self.assertTrue(gen.is_finished)
 
-        # The last part of the last block should be all zeros
+        # Fade-out de 20 ms = 882 muestras: a partir de ese punto el bloque
+        # final debe ser silencio, y el final del fade es casi cero (estéreo)
         last_block = all_blocks[-1]
-        self.assertTrue(np.all(last_block[-512:] == 0))
+        self.assertTrue(np.all(last_block[fade_out_len:] == 0))
+        self.assertTrue(np.all(np.abs(last_block[fade_out_len - 1]) < 0.05))
 
     def test_noise_mixing(self):
         """Test that noise is correctly added to the signal."""
+        # Volúmenes bajos: con 0.8 el limitador suave (tanh) comprime tanto la
+        # señal+ruido que su RMS queda por debajo de la señal limpia; a 0.3 el
+        # aporte del ruido domina y el RMS claramente sube.
+        self.cfg.left_volume = 0.3
+        self.cfg.right_volume = 0.3
         self.cfg.noise_type = "White"
         self.cfg.noise_volume = 0.5
 

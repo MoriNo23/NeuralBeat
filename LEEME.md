@@ -70,6 +70,57 @@ Se abrirá la ventana principal. Ajusta las frecuencias y pulsa **Generate Beat*
 
 ---
 
+## ⚡ Modo visual estroboscópico
+
+Convierte el motor de audio en un estímulo audiovisual: una ventana a pantalla
+completa parpadea al ritmo del audio (binaural/monaural: |derecha − izquierda|;
+isocrónico: la tasa de pulso; rampa: el valor del barrido en curso, con el
+gate evaluado en el *peor* punto del barrido).
+
+1. Arranca el audio con **Generate Beat** (el modo nunca se auto-inicia)
+2. Pulsa **Modo visual - ...** en la barra "Modo visual (estroboscopio)"
+3. La primera vez se pide aceptar un aviso de epilepsia fotosensible y
+   (opcional) calibrar la pantalla (~2 s a pantalla completa)
+4. Cualquier tecla o clic cierra el modo al instante; parar o terminar el
+   audio lo cierra automáticamente
+
+El botón muestra siempre el estado del gate antes de arrancar:
+
+| Estado | Significado |
+|---|---|
+| **exacto** | El ritmo cae en un número entero de fotogramas (p. ej. 29,9 Hz en un panel de 59,8 Hz; 40 Hz en uno de 120 Hz). Jitter cero. Si la frecuencia efectiva difiere de la pedida se re-etiqueta (p. ej. 10 Hz → 9,97 Hz) |
+| **aproximado** | Se emite con un patrón periódico de fotogramas (ventana ≤ 1 s) y se informa el jitter esperado (~1 fotograma) en milisegundos |
+| **armónico** | *Experimental, opt-in*: pulsos a un divisor entero del refresco cuyo 2º armónico aproxima el ritmo pedido (p. ej. 40 Hz pedidos en ~60 Hz → pulsos de 19,93 Hz, 2º armónico ≈39,87 Hz). Menos potencia y añade una componente en la fundamental |
+| **no disponible** | El ritmo supera la mitad del refresco medido. Nunca se emite "a la brava": en un panel de 60 Hz, forzar 40 Hz alíasea a ~19,8 Hz (banda equivocada y dentro de la zona de riesgo fotosensible) |
+
+Si el ritmo no está disponible, se ofrece a un clic el ritmo exacto más alto
+que soporta tu pantalla (p. ej. *usar 29,9 Hz* en un panel de 59,8 Hz),
+etiquetado como una frecuencia **distinta a la pedida**. Con el flag
+experimental activado (Settings → Visual → Modo armónico experimental)
+también se ofrece la alternativa armónica.
+
+En **Settings → Visual**:
+- **Recalibrar pantalla**: vuelve a medir el refresco real (mediana de flips
+  cronometrados, jitter p95) y recalcula el gate. Mejor hardware ⇒ mejor
+  capacidad sin cambios de código.
+- **Intensidad**: *cómoda* (por defecto, contraste moderado, menor respuesta
+  visual esperada) o *brillante* (opt-in, contraste máximo, con advertencia).
+
+**Cómo desbloquear 40 Hz reales**: un panel de clase 60 Hz no puede
+producirlos físicamente (la fundamental está limitada a refresco/2). Usa un
+monitor de 120 Hz o más (recalibra tras conectarlo: 40 Hz pasa a *exacto* por
+sí solo) o hardware externo dedicado (gafas LED de estrobo). Ni pantallas de
+teléfono ni trucos de software crean resolución temporal entre fotogramas.
+
+**Seguridad**: las luces parpadeantes pueden provocar convulsiones en
+personas con epilepsia fotosensible; el riesgo máximo está en la banda
+15-25 Hz (los presets de 16 Hz incluidos caen dentro). No uses el modo visual
+si tú o un familiar tienen epilepsia. NeuralBeat y su modo visual **no son un
+dispositivo médico ni un tratamiento**. La intensidad cómoda es el valor por
+defecto; ante cualquier malestar, ciérralo con cualquier tecla.
+
+---
+
 ## 🔬 Modo verificación científica
 
 Comprueba que el audio generado es matemáticamente exacto (análisis FFT, amplitud, separación estéreo):
@@ -107,7 +158,8 @@ python run_tests.py
 
 | Archivo / carpeta | Descripción |
 |---|---|
-| `SourceCode.py` | Aplicación principal (interfaz + motor de audio) |
+| `SourceCode.py` | Aplicación principal (interfaz + motor de audio + modo visual) |
+| `visual.py` | Núcleo del modo visual: capacidad, patrones, calibración y scheduler |
 | `presets.py` | Presets de frecuencias integrados |
 | `verification.py` | Módulo de validación científica |
 | `run_tests.py` | Ejecutor de la suite de tests |

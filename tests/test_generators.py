@@ -114,14 +114,14 @@ class TestMonauralGenerator(unittest.TestCase):
         )
     
     def test_generator_initialization(self):
-        """Test MonauralGenerator initializes correctly."""
-        gen = self.sc.MonauralGenerator(self.cfg)
+        """Monaural tones run through BinauralGenerator with left == right."""
+        gen = self.sc.BinauralGenerator(self.cfg)
         
         self.assertEqual(gen.samples_generated, 0)
     
     def test_generator_creates_output(self):
-        """Test MonauralGenerator creates audio output."""
-        gen = self.sc.MonauralGenerator(self.cfg)
+        """Monaural output is stereo with the requested frame count."""
+        gen = self.sc.BinauralGenerator(self.cfg)
         frames = 1024
         
         output = gen.generate_block(frames)

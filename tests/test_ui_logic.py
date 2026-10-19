@@ -33,25 +33,28 @@ for mod_name, mock_obj in MOCK_MODULES.items():
     if mod_name not in sys.modules:
         sys.modules[mod_name] = mock_obj
 
+# Las constantes de Tk (END='end', TclError) las pre-configura tests/conftest.py
 import SourceCode
 
 
-# This is a decorator to patch all UI globals for a test function
+# This is a decorator to patch all UI globals for a test function.
+# Sin `new` explicito: @patch inyecta cada mock como argumento (en orden
+# inverso al de decoracion), que es lo que los tests desempaquetan.
 def patch_ui_globals(func):
-    @patch('SourceCode.left_frequency_entry', MagicMock())
-    @patch('SourceCode.right_frequency_entry', MagicMock())
-    @patch('SourceCode.left_volume_entry', MagicMock())
-    @patch('SourceCode.right_volume_entry', MagicMock())
-    @patch('SourceCode.noise_volume_entry', MagicMock())
-    @patch('SourceCode.left_waveform_var', MagicMock())
-    @patch('SourceCode.right_waveform_var', MagicMock())
-    @patch('SourceCode.noise_type_var', MagicMock())
-    @patch('SourceCode.ramp_enabled_var', MagicMock())
-    @patch('SourceCode.beat_type_var', MagicMock())
-    @patch('SourceCode.carrier_entry', MagicMock())
-    @patch('SourceCode.start_beat_entry', MagicMock())
-    @patch('SourceCode.end_beat_entry', MagicMock())
-    @patch('SourceCode.ramp_minutes_entry', MagicMock())
+    @patch('SourceCode.left_frequency_entry')
+    @patch('SourceCode.right_frequency_entry')
+    @patch('SourceCode.left_volume_entry')
+    @patch('SourceCode.right_volume_entry')
+    @patch('SourceCode.noise_volume_entry')
+    @patch('SourceCode.left_waveform_var')
+    @patch('SourceCode.right_waveform_var')
+    @patch('SourceCode.noise_type_var')
+    @patch('SourceCode.ramp_enabled_var')
+    @patch('SourceCode.beat_type_var')
+    @patch('SourceCode.carrier_entry')
+    @patch('SourceCode.start_beat_entry')
+    @patch('SourceCode.end_beat_entry')
+    @patch('SourceCode.ramp_minutes_entry')
     def wrapper(*args, **kwargs):
         # The mock objects are passed as arguments by @patch
         return func(*args, **kwargs)
