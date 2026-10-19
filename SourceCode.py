@@ -2259,7 +2259,7 @@ def main():
     visual_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=4, sticky="ew")
     visual_frame.columnconfigure(1, weight=1)
 
-    visual_toggle_button = ttk.Button(
+    visual_toggle_button = tb.Button(
         visual_frame, text="Modo visual", command=toggle_visual_mode,
         bootstyle="secondary")
     visual_toggle_button.grid(row=0, column=0, padx=10, pady=4, sticky="w")
